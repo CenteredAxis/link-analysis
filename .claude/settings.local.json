@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(start \"\" \"C:\\\\Users\\\\rjlda\\\\OneDrive\\\\Documents\\\\projects\\\\murder board\\\\index.html\")",
+      "Bash(npm create:*)",
+      "Bash(npm init:*)",
+      "Bash(npm install:*)",
+      "Bash(npx vite:*)",
+      "Bash(timeout:*)",
+      "Bash(ping:*)",
+      "mcp__Desktop_Commander__list_directory",
+      "WebFetch(domain:js.cytoscape.org)",
+      "mcp__Desktop_Commander__write_file",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

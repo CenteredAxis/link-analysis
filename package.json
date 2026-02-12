@@ -1,0 +1,28 @@
+{
+  "name": "murder-board",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cytoscape": "^3.33.1",
+    "cytoscape-cxtmenu": "^3.5.0",
+    "cytoscape-fcose": "^2.2.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.18",
+    "@vitejs/plugin-react": "^5.1.3",
+    "tailwindcss": "^4.1.18",
+    "vite": "^7.3.1"
+  }
+}

@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Murder Board</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#1a1a1a;--surface:#232323;--surface2:#2e2e2e;--border:#3a3a3a;
+    --text:#e0e0e0;--text2:#999;--red:#c0392b;--red2:#e74c3c;
+    --accent:#b5543a;--gold:#c9a93e;--blue:#3a7cc0;
+    --pin:#c0392b;--string:#d4a84b;
+  }
+  html,body{height:100%;overflow:hidden;font-family:'Courier New',monospace;background:var(--bg);color:var(--text)}
+
+  /* ── Canvas ── */
+  #canvas{
+    position:absolute;inset:0;
+    background:
+      radial-gradient(circle at 20% 30%, rgba(60,40,30,0.15) 0%, transparent 50%),
+      radial-gradient(circle at 80% 70%, rgba(40,30,50,0.1) 0%, transparent 50%),
+      repeating-linear-gradient(0deg,transparent,transparent 39px,rgba(255,255,255,0.02) 39px,rgba(255,255,255,0.02) 40px),
+      repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(255,255,255,0.02) 39px,rgba(255,255,255,0.02) 40px),
+      var(--bg);
+    cursor:grab;
+    user-select:none;
+  }
+  #canvas.panning{cursor:grabbing}
+
+  /* ── SVG layer for connections ── */
+  #connections{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+  #connections line,#connections path{pointer-events:stroke}
+  .connection-line{stroke:var(--string);stroke-width:2;cursor:pointer;pointer-events:stroke;filter:drop-shadow(0 0 2px rgba(212,168,75,0.3))}
+  .connection-line:hover{stroke:var(--gold);stroke-width:3}
+  .connection-label{
+    position:absolute;transform:translate(-50%,-50%);
+    background:rgba(30,30,30,0.9);color:var(--gold);
+    font-size:11px;padding:2px 8px;border-radius:3px;
+    border:1px solid rgba(212,168,75,0.3);
+    pointer-events:auto;cursor:pointer;white-space:nowrap;
+    font-family:'Courier New',monospace;
+  }
+  .connection-label:hover{border-color:var(--gold);background:rgba(40,35,20,0.95)}
+
+  /* ── Node cards ── */
+  .node{
+    position:absolute;min-width:160px;max-width:260px;
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:3px;cursor:move;
+    box-shadow:2px 3px 12px rgba(0,0,0,0.5),0 0 0 1px rgba(0,0,0,0.3);
+    transition:box-shadow 0.15s;
+    z-index:1;
+  }
+  .node::before{
+    content:'';position:absolute;top:-8px;left:50%;transform:translateX(-50%);
+    width:16px;height:16px;border-radius:50%;
+    background:radial-gradient(circle at 40% 35%,var(--red2),var(--pin));
+    box-shadow:0 2px 4px rgba(0,0,0,0.5),inset 0 -2px 3px rgba(0,0,0,0.3),inset 0 1px 2px rgba(255,255,255,0.2);
+    z-index:2;
+  }
+  .node:hover{box-shadow:2px 3px 16px rgba(0,0,0,0.6),0 0 0 1px var(--accent)}
+  .node.selected{box-shadow:0 0 0 2px var(--red2),2px 3px 16px rgba(0,0,0,0.6)}
+  .node.connecting{box-shadow:0 0 0 2px var(--gold),0 0 12px rgba(201,169,62,0.3)}
+
+  .node-header{
+    padding:10px 12px 6px;border-bottom:1px solid var(--border);
+    display:flex;align-items:center;gap:8px;
+    background:rgba(192,57,43,0.08);border-radius:3px 3px 0 0;
+  }
+  .node-avatar{
+    width:32px;height:32px;border-radius:50%;
+    background:var(--surface2);border:2px solid var(--border);
+    display:flex;align-items:center;justify-content:center;
+    font-size:14px;color:var(--text2);flex-shrink:0;
+    overflow:hidden;
+  }
+  .node-avatar img{width:100%;height:100%;object-fit:cover}
+  .node-name{font-weight:bold;font-size:13px;color:var(--text);word-break:break-word}
+  .node-role{font-size:10px;color:var(--text2);margin-top:1px}
+  .node-body{padding:8px 12px;font-size:11px;color:var(--text2);line-height:1.5;max-height:120px;overflow-y:auto}
+  .node-body::-webkit-scrollbar{width:4px}
+  .node-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+  .node-footer{
+    padding:4px 8px;border-top:1px solid var(--border);
+    display:flex;gap:4px;justify-content:flex-end;
+  }
+  .node-btn{
+    background:none;border:1px solid var(--border);color:var(--text2);
+    font-size:10px;padding:2px 8px;border-radius:2px;cursor:pointer;
+    font-family:inherit;transition:all 0.15s;
+  }
+  .node-btn:hover{border-color:var(--text2);color:var(--text)}
+  .node-btn.danger:hover{border-color:var(--red2);color:var(--red2)}
+  .node-btn.connect-btn{color:var(--gold);border-color:rgba(201,169,62,0.4)}
+  .node-btn.connect-btn:hover{border-color:var(--gold);background:rgba(201,169,62,0.1)}
+
+  /* ── Toolbar ── */
+  #toolbar{
+    position:fixed;top:16px;left:50%;transform:translateX(-50%);
+    display:flex;gap:8px;align-items:center;
+    background:rgba(30,30,30,0.95);border:1px solid var(--border);
+    padding:8px 16px;border-radius:6px;z-index:1000;
+    box-shadow:0 4px 20px rgba(0,0,0,0.5);backdrop-filter:blur(10px);
+  }
+  #toolbar button{
+    background:none;border:1px solid var(--border);color:var(--text);
+    padding:6px 14px;border-radius:4px;cursor:pointer;font-family:inherit;
+    font-size:12px;transition:all 0.15s;display:flex;align-items:center;gap:6px;
+  }
+  #toolbar button:hover{border-color:var(--text2);background:var(--surface2)}
+  #toolbar button.active{border-color:var(--gold);color:var(--gold);background:rgba(201,169,62,0.1)}
+  .toolbar-sep{width:1px;height:20px;background:var(--border)}
+  #toolbar .title{font-size:14px;font-weight:bold;color:var(--red2);letter-spacing:1px;margin-right:8px}
+
+  /* ── Modal ── */
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(0,0,0,0.7);
+    display:flex;align-items:center;justify-content:center;z-index:2000;
+    backdrop-filter:blur(3px);
+  }
+  .modal{
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:6px;padding:24px;min-width:360px;max-width:480px;
+    box-shadow:0 8px 40px rgba(0,0,0,0.6);
+  }
+  .modal h3{font-size:14px;margin-bottom:16px;color:var(--text);letter-spacing:0.5px}
+  .modal label{display:block;font-size:11px;color:var(--text2);margin-bottom:4px;margin-top:12px}
+  .modal label:first-of-type{margin-top:0}
+  .modal input,.modal textarea,.modal select{
+    width:100%;padding:8px 10px;background:var(--bg);border:1px solid var(--border);
+    color:var(--text);border-radius:3px;font-family:inherit;font-size:12px;
+    outline:none;transition:border-color 0.15s;
+  }
+  .modal input:focus,.modal textarea:focus,.modal select:focus{border-color:var(--accent)}
+  .modal textarea{resize:vertical;min-height:80px}
+  .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+  .modal-actions button{
+    padding:8px 20px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;
+    border:1px solid var(--border);transition:all 0.15s;
+  }
+  .btn-primary{background:var(--red);color:#fff;border-color:var(--red)!important}
+  .btn-primary:hover{background:var(--red2)}
+  .btn-cancel{background:none;color:var(--text2)}
+  .btn-cancel:hover{color:var(--text);border-color:var(--text2)}
+  .btn-delete{background:none;color:var(--red2);border-color:var(--red)!important}
+  .btn-delete:hover{background:rgba(231,76,60,0.1)}
+
+  /* ── Color picker row ── */
+  .color-options{display:flex;gap:6px;margin-top:6px}
+  .color-swatch{
+    width:24px;height:24px;border-radius:50%;cursor:pointer;
+    border:2px solid transparent;transition:border-color 0.15s,transform 0.15s;
+  }
+  .color-swatch:hover,.color-swatch.active{border-color:#fff;transform:scale(1.15)}
+
+  /* ── Connection type presets ── */
+  .type-presets{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+  .type-preset{
+    font-size:10px;padding:3px 8px;border:1px solid var(--border);
+    border-radius:12px;cursor:pointer;color:var(--text2);background:none;
+    font-family:inherit;transition:all 0.15s;
+  }
+  .type-preset:hover{border-color:var(--text2);color:var(--text)}
+
+  /* ── Temp connection line ── */
+  #temp-line{stroke:var(--gold);stroke-width:2;stroke-dasharray:6,4;opacity:0.7;pointer-events:none}
+
+  /* ── Help tooltip ── */
+  #help{
+    position:fixed;bottom:16px;right:16px;
+    background:rgba(30,30,30,0.95);border:1px solid var(--border);
+    padding:12px 16px;border-radius:6px;font-size:11px;color:var(--text2);
+    line-height:1.8;z-index:1000;max-width:280px;
+    box-shadow:0 4px 20px rgba(0,0,0,0.5);
+  }
+  #help kbd{
+    background:var(--surface2);border:1px solid var(--border);
+    padding:1px 5px;border-radius:2px;font-size:10px;color:var(--text);
+  }
+
+  /* ── Photo upload area ── */
+  .photo-upload-area{
+    width:100%;height:80px;border:2px dashed var(--border);border-radius:4px;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+    color:var(--text2);font-size:11px;transition:border-color 0.15s;
+    margin-top:4px;position:relative;overflow:hidden;
+  }
+  .photo-upload-area:hover{border-color:var(--text2)}
+  .photo-upload-area img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .photo-upload-area input{display:none}
+
+  /* ── Zoom indicator ── */
+  #zoom-indicator{
+    position:fixed;bottom:16px;left:16px;
+    background:rgba(30,30,30,0.95);border:1px solid var(--border);
+    padding:6px 12px;border-radius:4px;font-size:11px;color:var(--text2);
+    z-index:1000;
+  }
+
+  /* ── Search ── */
+  #search-box{
+    position:fixed;top:16px;right:16px;z-index:1000;
+  }
+  #search-input{
+    background:rgba(30,30,30,0.95);border:1px solid var(--border);
+    color:var(--text);padding:8px 12px;border-radius:4px;
+    font-family:inherit;font-size:12px;width:200px;outline:none;
+  }
+  #search-input:focus{border-color:var(--accent);width:260px}
+  #search-input::placeholder{color:var(--text2)}
+</style>
+</head>
+<body>
+
+<div id="canvas">
+  <svg id="connections"><line id="temp-line" x1="0" y1="0" x2="0" y2="0" style="display:none"/></svg>
+</div>
+
+<div id="toolbar">
+  <span class="title">MURDER BOARD</span>
+  <div class="toolbar-sep"></div>
+  <button onclick="addNode()" title="Add Person"><span>+ Person</span></button>
+  <button id="connectModeBtn" onclick="toggleConnectMode()" title="Draw connections between people"><span>Connect</span></button>
+  <div class="toolbar-sep"></div>
+  <button onclick="fitView()" title="Fit all nodes in view">Fit</button>
+  <button onclick="resetView()" title="Reset zoom and pan">Reset</button>
+  <div class="toolbar-sep"></div>
+  <button onclick="exportBoard()" title="Export board data">Export</button>
+  <button onclick="importBoard()" title="Import board data">Import</button>
+  <button onclick="clearBoard()" title="Clear the board">Clear</button>
+</div>
+
+<div id="search-box">
+  <input id="search-input" type="text" placeholder="Search people..." oninput="searchNodes(this.value)">
+</div>
+
+<div id="zoom-indicator">100%</div>
+
+<div id="help">
+  <strong style="color:var(--text)">Controls</strong><br>
+  <kbd>Dbl-click</kbd> canvas to add a person<br>
+  <kbd>Drag</kbd> cards to move them<br>
+  <kbd>Scroll</kbd> to zoom in/out<br>
+  <kbd>Click+Drag</kbd> canvas to pan<br>
+  <kbd>Del</kbd> delete selected node<br>
+  <kbd>Esc</kbd> cancel / deselect<br>
+  <kbd>/</kbd> focus search
+</div>
+
+<input type="file" id="import-input" accept=".json" style="display:none" onchange="handleImport(event)">
+
+<script>
+// ── State ──
+const state = {
+  nodes: [],
+  connections: [],
+  nextId: 1,
+  pan: { x: 0, y: 0 },
+  zoom: 1,
+  connectMode: false,
+  connectFrom: null,
+  selectedNode: null,
+  dragging: null,
+  dragOffset: { x: 0, y: 0 },
+  panning: false,
+  panStart: { x: 0, y: 0 },
+  panStartOffset: { x: 0, y: 0 },
+};
+
+const canvas = document.getElementById('canvas');
+const svg = document.getElementById('connections');
+const tempLine = document.getElementById('temp-line');
+const zoomIndicator = document.getElementById('zoom-indicator');
+
+const NODE_COLORS = ['#c0392b','#2980b9','#27ae60','#8e44ad','#d68910','#16a085','#7f8c8d','#c0543a'];
+const CONNECTION_PRESETS = ['Family','Friend','Associate','Rival','Employer','Witness','Suspect','Victim','Informant','Alias','Financial','Romantic','Unknown'];
+
+// ── Helpers ──
+function worldToScreen(x, y) {
+  return { x: x * state.zoom + state.pan.x, y: y * state.zoom + state.pan.y };
+}
+function screenToWorld(sx, sy) {
+  return { x: (sx - state.pan.x) / state.zoom, y: (sy - state.pan.y) / state.zoom };
+}
+
+function save() {
+  try {
+    const data = { nodes: state.nodes, connections: state.connections, nextId: state.nextId, pan: state.pan, zoom: state.zoom };
+    localStorage.setItem('murderBoard', JSON.stringify(data));
+  } catch(e) {}
+}
+
+function load() {
+  try {
+    const raw = localStorage.getItem('murderBoard');
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    state.nodes = data.nodes || [];
+    state.connections = data.connections || [];
+    state.nextId = data.nextId || 1;
+    state.pan = data.pan || { x: 0, y: 0 };
+    state.zoom = data.zoom || 1;
+  } catch(e) {}
+}
+
+// ── Render ──
+function render() {
+  // Remove old node elements
+  canvas.querySelectorAll('.node').forEach(el => el.remove());
+  canvas.querySelectorAll('.connection-label').forEach(el => el.remove());
+  svg.querySelectorAll('.connection-line').forEach(el => el.remove());
+
+  // Apply transform
+  const transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
+
+  // Draw connections
+  state.connections.forEach(conn => {
+    const from = state.nodes.find(n => n.id === conn.from);
+    const to = state.nodes.find(n => n.id === conn.to);
+    if (!from || !to) return;
+
+    const fromEl = getNodeCenter(from);
+    const toEl = getNodeCenter(to);
+
+    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('class','connection-line');
+    const sx1 = fromEl.x * state.zoom + state.pan.x;
+    const sy1 = fromEl.y * state.zoom + state.pan.y;
+    const sx2 = toEl.x * state.zoom + state.pan.x;
+    const sy2 = toEl.y * state.zoom + state.pan.y;
+    line.setAttribute('x1', sx1);
+    line.setAttribute('y1', sy1);
+    line.setAttribute('x2', sx2);
+    line.setAttribute('y2', sy2);
+    if (conn.color) {
+      line.setAttribute('stroke', conn.color);
+    }
+    line.addEventListener('click', (e) => { e.stopPropagation(); editConnection(conn.id); });
+    line.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); deleteConnection(conn.id); });
+    svg.insertBefore(line, tempLine);
+
+    // Label
+    if (conn.label) {
+      const lbl = document.createElement('div');
+      lbl.className = 'connection-label';
+      lbl.textContent = conn.label;
+      lbl.style.left = ((sx1+sx2)/2) + 'px';
+      lbl.style.top = ((sy1+sy2)/2) + 'px';
+      if (conn.color) lbl.style.color = conn.color;
+      if (conn.color) lbl.style.borderColor = conn.color + '66';
+      lbl.addEventListener('click', (e) => { e.stopPropagation(); editConnection(conn.id); });
+      lbl.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); deleteConnection(conn.id); });
+      canvas.appendChild(lbl);
+    }
+  });
+
+  // Draw nodes
+  state.nodes.forEach(node => {
+    const el = document.createElement('div');
+    el.className = 'node' + (state.selectedNode === node.id ? ' selected' : '') + (state.connectMode && state.connectFrom === node.id ? ' connecting' : '');
+    el.dataset.id = node.id;
+    el.style.transformOrigin = '0 0';
+    el.style.left = (node.x * state.zoom + state.pan.x) + 'px';
+    el.style.top = (node.y * state.zoom + state.pan.y) + 'px';
+    el.style.transform = `scale(${state.zoom})`;
+
+    const color = node.color || '#c0392b';
+    const initials = node.name ? node.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase() : '?';
+
+    el.innerHTML = `
+      <div class="node-header" style="background:${color}15;border-bottom-color:${color}33">
+        <div class="node-avatar" style="border-color:${color}88">
+          ${node.photo ? `<img src="${node.photo}" alt="">` : initials}
+        </div>
+        <div>
+          <div class="node-name">${escHtml(node.name || 'Unknown')}</div>
+          ${node.role ? `<div class="node-role" style="color:${color}">${escHtml(node.role)}</div>` : ''}
+        </div>
+      </div>
+      ${node.notes ? `<div class="node-body">${escHtml(node.notes)}</div>` : ''}
+      <div class="node-footer">
+        <button class="node-btn connect-btn" data-action="connect" title="Connect to another person">Link</button>
+        <button class="node-btn" data-action="edit" title="Edit details">Edit</button>
+        <button class="node-btn danger" data-action="delete" title="Remove">X</button>
+      </div>
+    `;
+
+    // Events
+    el.addEventListener('mousedown', (e) => onNodeMouseDown(e, node));
+    el.addEventListener('click', (e) => onNodeClick(e, node));
+
+    canvas.appendChild(el);
+  });
+
+  zoomIndicator.textContent = Math.round(state.zoom * 100) + '%';
+  save();
+}
+
+function getNodeCenter(node) {
+  // Approximate center based on min-width and estimated height
+  return { x: node.x + 80, y: node.y + 40 };
+}
+
+function getNodeDimensions(nodeId) {
+  const el = canvas.querySelector(`.node[data-id="${nodeId}"]`);
+  if (!el) return { w: 160, h: 80 };
+  return { w: el.offsetWidth, h: el.offsetHeight };
+}
+
+function getNodeScreenCenter(node) {
+  const el = canvas.querySelector(`.node[data-id="${node.id}"]`);
+  if (el) {
+    const w = el.offsetWidth * state.zoom;
+    const h = el.offsetHeight * state.zoom;
+    const sx = node.x * state.zoom + state.pan.x + w / 2;
+    const sy = node.y * state.zoom + state.pan.y + h / 2;
+    return { x: sx, y: sy };
+  }
+  const c = getNodeCenter(node);
+  return { x: c.x * state.zoom + state.pan.x, y: c.y * state.zoom + state.pan.y };
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ── Node Interactions ──
+function onNodeMouseDown(e, node) {
+  if (e.target.closest('button')) return;
+  e.stopPropagation();
+  state.dragging = node.id;
+  state.dragOffset = {
+    x: e.clientX - (node.x * state.zoom + state.pan.x),
+    y: e.clientY - (node.y * state.zoom + state.pan.y),
+  };
+  state.selectedNode = node.id;
+}
+
+function onNodeClick(e, node) {
+  e.stopPropagation();
+  const action = e.target.dataset?.action;
+  if (action === 'edit') { editNode(node.id); return; }
+  if (action === 'delete') { deleteNode(node.id); return; }
+  if (action === 'connect') { startConnect(node.id); return; }
+
+  if (state.connectMode && state.connectFrom !== null && state.connectFrom !== node.id) {
+    finishConnect(node.id);
+    return;
+  }
+
+  state.selectedNode = node.id;
+  render();
+}
+
+// ── Canvas Events ──
+canvas.addEventListener('mousedown', (e) => {
+  if (e.target === canvas || e.target === svg) {
+    state.panning = true;
+    state.panStart = { x: e.clientX, y: e.clientY };
+    state.panStartOffset = { ...state.pan };
+    canvas.classList.add('panning');
+    state.selectedNode = null;
+  }
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (state.dragging !== null) {
+    const node = state.nodes.find(n => n.id === state.dragging);
+    if (node) {
+      node.x = (e.clientX - state.dragOffset.x - state.pan.x) / state.zoom;
+      node.y = (e.clientY - state.dragOffset.y - state.pan.y) / state.zoom;
+      render();
+    }
+  } else if (state.panning) {
+    state.pan.x = state.panStartOffset.x + (e.clientX - state.panStart.x);
+    state.pan.y = state.panStartOffset.y + (e.clientY - state.panStart.y);
+    render();
+  }
+
+  // Temp connection line
+  if (state.connectMode && state.connectFrom !== null) {
+    const from = state.nodes.find(n => n.id === state.connectFrom);
+    if (from) {
+      const c = getNodeScreenCenter(from);
+      tempLine.setAttribute('x1', c.x);
+      tempLine.setAttribute('y1', c.y);
+      tempLine.setAttribute('x2', e.clientX);
+      tempLine.setAttribute('y2', e.clientY);
+      tempLine.style.display = 'block';
+    }
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  state.dragging = null;
+  state.panning = false;
+  canvas.classList.remove('panning');
+});
+
+canvas.addEventListener('dblclick', (e) => {
+  if (e.target !== canvas && e.target !== svg) return;
+  const pos = screenToWorld(e.clientX, e.clientY);
+  addNode(pos.x, pos.y);
+});
+
+canvas.addEventListener('click', (e) => {
+  if (e.target === canvas || e.target === svg) {
+    if (state.connectMode && state.connectFrom !== null) {
+      cancelConnect();
+    }
+    state.selectedNode = null;
+    render();
+  }
+});
+
+// Zoom
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? 0.9 : 1.1;
+  const newZoom = Math.max(0.2, Math.min(3, state.zoom * delta));
+  // Zoom toward cursor
+  const wx = (e.clientX - state.pan.x) / state.zoom;
+  const wy = (e.clientY - state.pan.y) / state.zoom;
+  state.zoom = newZoom;
+  state.pan.x = e.clientX - wx * state.zoom;
+  state.pan.y = e.clientY - wy * state.zoom;
+  render();
+}, { passive: false });
+
+// Keyboard
+window.addEventListener('keydown', (e) => {
+  if (document.querySelector('.modal-overlay')) return;
+  if (e.key === 'Escape') {
+    if (state.connectMode) { cancelConnect(); }
+    state.selectedNode = null;
+    render();
+  }
+  if (e.key === 'Delete' && state.selectedNode) {
+    deleteNode(state.selectedNode);
+  }
+  if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
+    e.preventDefault();
+    document.getElementById('search-input').focus();
+  }
+});
+
+// ── CRUD ──
+function addNode(x, y) {
+  if (x === undefined) {
+    const center = screenToWorld(window.innerWidth / 2, window.innerHeight / 2);
+    x = center.x - 80 + (Math.random() - 0.5) * 100;
+    y = center.y - 40 + (Math.random() - 0.5) * 100;
+  }
+  const node = { id: state.nextId++, name: '', role: '', notes: '', color: NODE_COLORS[0], photo: null, x, y };
+  state.nodes.push(node);
+  render();
+  editNode(node.id);
+}
+
+function editNode(id) {
+  const node = state.nodes.find(n => n.id === id);
+  if (!node) return;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+
+  const colorSwatches = NODE_COLORS.map(c =>
+    `<div class="color-swatch ${node.color === c ? 'active' : ''}" data-color="${c}" style="background:${c}" title="${c}"></div>`
+  ).join('');
+
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>PERSON DETAILS</h3>
+      <label>Name</label>
+      <input type="text" id="m-name" value="${escHtml(node.name)}" placeholder="Full name" autofocus>
+      <label>Role / Title</label>
+      <input type="text" id="m-role" value="${escHtml(node.role)}" placeholder="e.g. Suspect, Witness, Victim...">
+      <label>Notes</label>
+      <textarea id="m-notes" placeholder="Background info, observations, evidence...">${escHtml(node.notes)}</textarea>
+      <label>Photo</label>
+      <div class="photo-upload-area" id="m-photo-area">
+        ${node.photo ? `<img src="${node.photo}" alt="">` : 'Click or drop image'}
+        <input type="file" accept="image/*" id="m-photo-input">
+      </div>
+      <label>Color</label>
+      <div class="color-options">${colorSwatches}</div>
+      <div class="modal-actions">
+        <button class="btn-delete" id="m-delete">Delete</button>
+        <button class="btn-cancel" id="m-cancel">Cancel</button>
+        <button class="btn-primary" id="m-save">Save</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  let selectedColor = node.color;
+  let photoData = node.photo;
+
+  // Color selection
+  overlay.querySelectorAll('.color-swatch').forEach(sw => {
+    sw.addEventListener('click', () => {
+      overlay.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+      sw.classList.add('active');
+      selectedColor = sw.dataset.color;
+    });
+  });
+
+  // Photo upload
+  const photoArea = overlay.querySelector('#m-photo-area');
+  const photoInput = overlay.querySelector('#m-photo-input');
+  photoArea.addEventListener('click', () => photoInput.click());
+  photoArea.addEventListener('dragover', (e) => { e.preventDefault(); photoArea.style.borderColor = 'var(--accent)'; });
+  photoArea.addEventListener('dragleave', () => { photoArea.style.borderColor = ''; });
+  photoArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    photoArea.style.borderColor = '';
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) readPhoto(file);
+  });
+  photoInput.addEventListener('change', (e) => { if (e.target.files[0]) readPhoto(e.target.files[0]); });
+
+  function readPhoto(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      photoData = e.target.result;
+      photoArea.innerHTML = `<img src="${photoData}" alt=""><input type="file" accept="image/*" id="m-photo-input">`;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // Buttons
+  overlay.querySelector('#m-save').addEventListener('click', () => {
+    node.name = overlay.querySelector('#m-name').value.trim() || 'Unknown';
+    node.role = overlay.querySelector('#m-role').value.trim();
+    node.notes = overlay.querySelector('#m-notes').value.trim();
+    node.color = selectedColor;
+    node.photo = photoData;
+    overlay.remove();
+    render();
+  });
+  overlay.querySelector('#m-cancel').addEventListener('click', () => {
+    if (!node.name) { state.nodes = state.nodes.filter(n => n.id !== id); }
+    overlay.remove();
+    render();
+  });
+  overlay.querySelector('#m-delete').addEventListener('click', () => {
+    overlay.remove();
+    deleteNode(id);
+  });
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) {
+      const name = overlay.querySelector('#m-name').value.trim();
+      if (!name && !node.name) { state.nodes = state.nodes.filter(n => n.id !== id); }
+      else {
+        node.name = name || node.name || 'Unknown';
+        node.role = overlay.querySelector('#m-role').value.trim();
+        node.notes = overlay.querySelector('#m-notes').value.trim();
+        node.color = selectedColor;
+        node.photo = photoData;
+      }
+      overlay.remove();
+      render();
+    }
+  });
+
+  // Focus name
+  setTimeout(() => overlay.querySelector('#m-name').focus(), 50);
+}
+
+function deleteNode(id) {
+  state.nodes = state.nodes.filter(n => n.id !== id);
+  state.connections = state.connections.filter(c => c.from !== id && c.to !== id);
+  if (state.selectedNode === id) state.selectedNode = null;
+  if (state.connectFrom === id) cancelConnect();
+  render();
+}
+
+// ── Connections ──
+function toggleConnectMode() {
+  state.connectMode = !state.connectMode;
+  if (!state.connectMode) cancelConnect();
+  document.getElementById('connectModeBtn').classList.toggle('active', state.connectMode);
+}
+
+function startConnect(nodeId) {
+  state.connectMode = true;
+  state.connectFrom = nodeId;
+  document.getElementById('connectModeBtn').classList.add('active');
+  render();
+}
+
+function cancelConnect() {
+  state.connectFrom = null;
+  tempLine.style.display = 'none';
+  state.connectMode = false;
+  document.getElementById('connectModeBtn').classList.remove('active');
+  render();
+}
+
+function finishConnect(toId) {
+  const fromId = state.connectFrom;
+  if (fromId === toId) return;
+  // Check duplicate
+  const exists = state.connections.find(c => (c.from === fromId && c.to === toId) || (c.from === toId && c.to === fromId));
+  if (exists) {
+    cancelConnect();
+    editConnection(exists.id);
+    return;
+  }
+  const conn = { id: state.nextId++, from: fromId, to: toId, label: '', color: '', notes: '' };
+  state.connections.push(conn);
+  cancelConnect();
+  editConnection(conn.id);
+}
+
+function editConnection(id) {
+  const conn = state.connections.find(c => c.id === id);
+  if (!conn) return;
+  const fromNode = state.nodes.find(n => n.id === conn.from);
+  const toNode = state.nodes.find(n => n.id === conn.to);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+
+  const presetBtns = CONNECTION_PRESETS.map(p =>
+    `<button class="type-preset" data-type="${p}">${p}</button>`
+  ).join('');
+
+  const lineColors = ['#d4a84b','#c0392b','#2980b9','#27ae60','#8e44ad','#d68910','#e74c3c','#7f8c8d'];
+  const colorSwatches = lineColors.map(c =>
+    `<div class="color-swatch ${conn.color === c ? 'active' : ''}" data-color="${c}" style="background:${c}"></div>`
+  ).join('');
+
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>CONNECTION: ${escHtml(fromNode?.name||'?')} ↔ ${escHtml(toNode?.name||'?')}</h3>
+      <label>Relationship Type</label>
+      <input type="text" id="mc-label" value="${escHtml(conn.label)}" placeholder="e.g. Brother, Business Partner, Witnessed...">
+      <div class="type-presets">${presetBtns}</div>
+      <label>Details</label>
+      <textarea id="mc-notes" placeholder="Details about this relationship...">${escHtml(conn.notes || '')}</textarea>
+      <label>Line Color</label>
+      <div class="color-options">${colorSwatches}</div>
+      <div class="modal-actions">
+        <button class="btn-delete" id="mc-delete">Delete</button>
+        <button class="btn-cancel" id="mc-cancel">Cancel</button>
+        <button class="btn-primary" id="mc-save">Save</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  let selectedColor = conn.color || '';
+
+  // Preset buttons
+  overlay.querySelectorAll('.type-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      overlay.querySelector('#mc-label').value = btn.dataset.type;
+    });
+  });
+
+  // Color selection
+  overlay.querySelectorAll('.color-swatch').forEach(sw => {
+    sw.addEventListener('click', () => {
+      overlay.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+      sw.classList.add('active');
+      selectedColor = sw.dataset.color;
+    });
+  });
+
+  overlay.querySelector('#mc-save').addEventListener('click', () => {
+    conn.label = overlay.querySelector('#mc-label').value.trim();
+    conn.notes = overlay.querySelector('#mc-notes').value.trim();
+    conn.color = selectedColor;
+    overlay.remove();
+    render();
+  });
+  overlay.querySelector('#mc-cancel').addEventListener('click', () => {
+    if (!conn.label && !conn.notes) { state.connections = state.connections.filter(c => c.id !== id); }
+    overlay.remove();
+    render();
+  });
+  overlay.querySelector('#mc-delete').addEventListener('click', () => {
+    overlay.remove();
+    deleteConnection(id);
+  });
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) {
+      conn.label = overlay.querySelector('#mc-label').value.trim();
+      conn.notes = overlay.querySelector('#mc-notes').value.trim();
+      conn.color = selectedColor;
+      overlay.remove();
+      render();
+    }
+  });
+
+  setTimeout(() => overlay.querySelector('#mc-label').focus(), 50);
+}
+
+function deleteConnection(id) {
+  state.connections = state.connections.filter(c => c.id !== id);
+  render();
+}
+
+// ── View ──
+function resetView() {
+  state.pan = { x: 0, y: 0 };
+  state.zoom = 1;
+  render();
+}
+
+function fitView() {
+  if (state.nodes.length === 0) { resetView(); return; }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  state.nodes.forEach(n => {
+    minX = Math.min(minX, n.x);
+    minY = Math.min(minY, n.y);
+    maxX = Math.max(maxX, n.x + 200);
+    maxY = Math.max(maxY, n.y + 100);
+  });
+  const padding = 80;
+  const w = maxX - minX + padding * 2;
+  const h = maxY - minY + padding * 2;
+  const scaleX = window.innerWidth / w;
+  const scaleY = window.innerHeight / h;
+  state.zoom = Math.max(0.2, Math.min(2, Math.min(scaleX, scaleY)));
+  state.pan.x = (window.innerWidth - (minX + maxX) * state.zoom) / 2;
+  state.pan.y = (window.innerHeight - (minY + maxY) * state.zoom) / 2;
+  render();
+}
+
+// ── Search ──
+function searchNodes(query) {
+  const q = query.toLowerCase().trim();
+  canvas.querySelectorAll('.node').forEach(el => {
+    const id = parseInt(el.dataset.id);
+    const node = state.nodes.find(n => n.id === id);
+    if (!node) return;
+    const match = !q || node.name.toLowerCase().includes(q) || (node.role||'').toLowerCase().includes(q) || (node.notes||'').toLowerCase().includes(q);
+    el.style.opacity = match ? '1' : '0.2';
+  });
+}
+
+// ── Import/Export ──
+function exportBoard() {
+  const data = { nodes: state.nodes, connections: state.connections, nextId: state.nextId, exportedAt: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'murder-board-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importBoard() {
+  document.getElementById('import-input').click();
+}
+
+function handleImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      state.nodes = data.nodes || [];
+      state.connections = data.connections || [];
+      state.nextId = data.nextId || 1;
+      render();
+      fitView();
+    } catch(err) {
+      alert('Invalid board file.');
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function clearBoard() {
+  if (!confirm('Clear the entire board? This cannot be undone.')) return;
+  state.nodes = [];
+  state.connections = [];
+  state.nextId = 1;
+  state.selectedNode = null;
+  state.connectFrom = null;
+  render();
+}
+
+// ── Init ──
+load();
+render();
+</script>
+</body>
+</html>
