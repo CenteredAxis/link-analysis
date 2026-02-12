@@ -1,9 +1,26 @@
 import { useState } from 'react'
 import { NODE_TYPES, PERSON_STATUSES, EVENT_TYPES } from '../../constants'
+import { uploadImage } from '../../api/uploadService'
 
 export default function NodeForm({ nodeForm, setNodeForm, handleAddNode }) {
   const [showPerson, setShowPerson] = useState(false)
   const [showEvent, setShowEvent] = useState(false)
+  const [uploading, setUploading] = useState(false)
+
+  async function handleFileUpload(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const url = await uploadImage(file)
+      setNodeForm((f) => ({ ...f, avatarUrl: url }))
+    } catch (err) {
+      alert('Upload failed: ' + err.message)
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
 
   return (
     <form onSubmit={handleAddNode} className="space-y-3">
@@ -37,14 +54,53 @@ export default function NodeForm({ nodeForm, setNodeForm, handleAddNode }) {
         className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 outline-none focus:border-amber-500"
       />
 
-      {/* Image URL — all types */}
-      <input
-        type="url"
-        placeholder="Image URL"
-        value={nodeForm.avatarUrl || ''}
-        onChange={(e) => setNodeForm((f) => ({ ...f, avatarUrl: e.target.value }))}
-        className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 outline-none focus:border-amber-500"
-      />
+      {/* Image: URL or File Upload */}
+      <div className="space-y-1.5">
+        <label className="block text-xs text-gray-500">Image</label>
+
+        {nodeForm.avatarUrl && (
+          <div className="flex items-center gap-2">
+            <img
+              src={nodeForm.avatarUrl}
+              alt="preview"
+              className="h-10 w-10 rounded border border-gray-700 object-cover"
+              onError={(e) => { e.target.style.display = 'none' }}
+            />
+            <button
+              type="button"
+              onClick={() => setNodeForm((f) => ({ ...f, avatarUrl: '' }))}
+              className="text-xs text-red-400 hover:text-red-300"
+            >
+              Remove
+            </button>
+          </div>
+        )}
+
+        <input
+          type="url"
+          placeholder="Image URL"
+          value={nodeForm.avatarUrl || ''}
+          onChange={(e) => setNodeForm((f) => ({ ...f, avatarUrl: e.target.value }))}
+          className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 outline-none focus:border-amber-500"
+        />
+
+        <div className="flex items-center gap-2">
+          <hr className="flex-1 border-gray-700" />
+          <span className="text-[10px] text-gray-600">or</span>
+          <hr className="flex-1 border-gray-700" />
+        </div>
+
+        <label className="flex cursor-pointer items-center justify-center rounded border border-dashed border-gray-600 py-2 text-xs text-gray-400 transition-colors hover:border-gray-500 hover:text-gray-300">
+          <span>{uploading ? 'Uploading...' : 'Upload Image'}</span>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            className="hidden"
+            onChange={handleFileUpload}
+            disabled={uploading}
+          />
+        </label>
+      </div>
 
       {/* Location — all types */}
       <input

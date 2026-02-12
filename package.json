@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "server": "node server/index.js",
+    "start": "npm run build && node server/index.js"
   },
   "keywords": [],
   "author": "",
@@ -16,6 +18,9 @@
     "cytoscape": "^3.33.1",
     "cytoscape-cxtmenu": "^3.5.0",
     "cytoscape-fcose": "^2.2.0",
+    "express": "^5.2.1",
+    "http-proxy-middleware": "^3.0.5",
+    "multer": "^2.0.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },

@@ -1,6 +1,25 @@
+import { useState } from 'react'
 import { NODE_TYPES, PERSON_STATUSES, EVENT_TYPES } from '../../constants'
+import { uploadImage } from '../../api/uploadService'
 
 export default function NodeEditForm({ editingNode, setEditingNode, saveEditNode }) {
+  const [uploading, setUploading] = useState(false)
+
+  async function handleFileUpload(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const url = await uploadImage(file)
+      setEditingNode((n) => ({ ...n, avatarUrl: url }))
+    } catch (err) {
+      alert('Upload failed: ' + err.message)
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
+
   return (
     <div className="space-y-2">
       <input
@@ -34,16 +53,55 @@ export default function NodeEditForm({ editingNode, setEditingNode, saveEditNode
         className="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-sm text-gray-100 placeholder-gray-500 outline-none focus:border-amber-500"
       />
 
-      {/* Image URL */}
-      <input
-        type="url"
-        placeholder="Image URL"
-        value={editingNode.avatarUrl || ''}
-        onChange={(e) =>
-          setEditingNode((n) => ({ ...n, avatarUrl: e.target.value }))
-        }
-        className="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-100 placeholder-gray-500 outline-none focus:border-amber-500"
-      />
+      {/* Image: URL or File Upload */}
+      <div className="space-y-1.5">
+        <label className="block text-xs text-gray-500">Image</label>
+
+        {editingNode.avatarUrl && (
+          <div className="flex items-center gap-2">
+            <img
+              src={editingNode.avatarUrl}
+              alt="preview"
+              className="h-10 w-10 rounded border border-gray-700 object-cover"
+              onError={(e) => { e.target.style.display = 'none' }}
+            />
+            <button
+              type="button"
+              onClick={() => setEditingNode((n) => ({ ...n, avatarUrl: '' }))}
+              className="text-xs text-red-400 hover:text-red-300"
+            >
+              Remove
+            </button>
+          </div>
+        )}
+
+        <input
+          type="url"
+          placeholder="Image URL"
+          value={editingNode.avatarUrl || ''}
+          onChange={(e) =>
+            setEditingNode((n) => ({ ...n, avatarUrl: e.target.value }))
+          }
+          className="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-100 placeholder-gray-500 outline-none focus:border-amber-500"
+        />
+
+        <div className="flex items-center gap-2">
+          <hr className="flex-1 border-gray-700" />
+          <span className="text-[10px] text-gray-600">or</span>
+          <hr className="flex-1 border-gray-700" />
+        </div>
+
+        <label className="flex cursor-pointer items-center justify-center rounded border border-dashed border-gray-600 py-2 text-xs text-gray-400 transition-colors hover:border-gray-500 hover:text-gray-300">
+          <span>{uploading ? 'Uploading...' : 'Upload Image'}</span>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            className="hidden"
+            onChange={handleFileUpload}
+            disabled={uploading}
+          />
+        </label>
+      </div>
 
       {/* Location */}
       <input

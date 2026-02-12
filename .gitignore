@@ -4,3 +4,4 @@ NUL
 .env
 .env.*
 *.local
+server/uploads/
